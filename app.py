@@ -13,7 +13,7 @@ HF_TOKENS = [
 ]
 
 # Hugging Face Model URL (Instruct-pix2pix image editing ke liye best hai)
-API_URL = "https://api-inference.huggingface.co/models/timbrooks/instruct-pix2pix"
+API_URL = "https://router.huggingface.co/hf-inference/models/timbrooks/instruct-pix2pix"
 
 current_token_index = 0
 
