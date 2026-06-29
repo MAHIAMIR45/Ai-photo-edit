@@ -24,7 +24,8 @@
             max-width: 850px;
             width: 100%;
         }
-        h1 { text-align: center; color: #333; margin-bottom: 25px; }
+        h1 { text-align: center; color: #333; margin-bottom: 10px; }
+        .subtitle { text-align: center; color: #666; font-size: 13px; margin-bottom: 25px; }
         .form-group { margin-bottom: 15px; }
         label { display: block; margin-bottom: 5px; font-weight: bold; color: #444; }
         input[type="text"] {
@@ -54,15 +55,7 @@
             padding: 10px;
             border-radius: 5px;
             margin-bottom: 15px;
-        }
-        .info {
-            background: #e8f4fd;
-            border-left: 4px solid #007bff;
-            padding: 10px 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            font-size: 13px;
-            color: #444;
+            display: none;
         }
         .results {
             display: flex;
@@ -81,19 +74,13 @@
         }
         .image-box h3 { color: #555; margin-bottom: 10px; }
         .image-box img { max-width: 100%; border-radius: 5px; }
-        .loader {
-            display: none;
-            text-align: center;
-            margin-top: 15px;
-            color: #007bff;
-            font-size: 15px;
-        }
+        .loader { display: none; text-align: center; margin-top: 20px; }
         .spinner {
             border: 4px solid #f3f3f3;
             border-top: 4px solid #007bff;
             border-radius: 50%;
-            width: 36px;
-            height: 36px;
+            width: 40px;
+            height: 40px;
             animation: spin 1s linear infinite;
             margin: 10px auto;
         }
@@ -101,61 +88,130 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        .status-text { color: #007bff; font-size: 14px; margin-top: 8px; }
+        .download-btn {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 7px 16px;
+            background: #28a745;
+            color: white;
+            border-radius: 5px;
+            text-decoration: none;
+            font-size: 13px;
+        }
+        .download-btn:hover { background: #218838; }
     </style>
 </head>
 <body>
-
 <div class="container">
     <h1>🎨 AI Image Editor</h1>
+    <p class="subtitle">Image URL aur editing instruction do — AI original image ko modify karega</p>
 
-    <div class="info">
-        ✅ <strong>Yeh app aapki image ko edit karta hai</strong> — image URL aur editing instruction do, AI modified image banayega. Processing mein 30-60 second lag sakte hain.
-    </div>
+    <div class="error" id="errorBox"></div>
 
-    {% if error %}
-        <div class="error">{{ error }}</div>
-    {% endif %}
-
-    <form method="POST" id="mainForm">
+    <form id="mainForm">
         <div class="form-group">
-            <label for="image_url">Image URL (Imgur / ImgBB Direct Link):</label>
-            <input type="text" id="image_url" name="image_url" value="{{ image_url or '' }}"
-                   placeholder="https://i.imgur.com/your_image.jpg" required>
+            <label for="image_url">Image URL (Imgur / ImgBB Direct Link): *</label>
+            <input type="text" id="image_url" name="image_url"
+                   placeholder="https://i.ibb.co/your_image.jpg" required>
         </div>
         <div class="form-group">
-            <label for="prompt">Edit Instruction (Prompt):</label>
-            <input type="text" id="prompt" name="prompt" value="{{ prompt or '' }}"
-                   placeholder="e.g. Make it look like a cartoon, turn day to night, add a hat" required>
+            <label for="prompt">Edit Instruction (Prompt): *</label>
+            <input type="text" id="prompt" name="prompt"
+                   placeholder="e.g. change hair color to red, make it cartoon, add sunglasses" required>
         </div>
         <button type="submit" id="submitBtn">Edit Image ✏️</button>
     </form>
 
     <div class="loader" id="loader">
         <div class="spinner"></div>
-        <p>AI image edit kar raha hai... 30-60 second lag sakte hain ⏳</p>
+        <p class="status-text" id="statusText">AI image edit kar raha hai... 30-60 second lag sakte hain ⏳</p>
     </div>
 
-    {% if edited_img_b64 %}
-    <div class="results">
+    <div class="results" id="results" style="display:none;">
         <div class="image-box">
             <h3>📷 Original Image</h3>
-            <img src="{{ original_img_url }}" alt="Original Image">
+            <img id="originalImg" src="" alt="Original Image">
         </div>
         <div class="image-box">
             <h3>✨ Edited Image (AI)</h3>
-            <img src="data:image/webp;base64,{{ edited_img_b64 }}" alt="Edited Image">
+            <img id="editedImg" src="" alt="Edited Image">
+            <br>
+            <a id="downloadBtn" class="download-btn" download="edited-image.webp">⬇ Download</a>
         </div>
     </div>
-    {% endif %}
 </div>
 
 <script>
-    document.getElementById('mainForm').addEventListener('submit', function() {
-        document.getElementById('submitBtn').disabled = true;
-        document.getElementById('submitBtn').textContent = 'Processing...';
-        document.getElementById('loader').style.display = 'block';
+    const form = document.getElementById('mainForm');
+    const loader = document.getElementById('loader');
+    const statusText = document.getElementById('statusText');
+    const results = document.getElementById('results');
+    const errorBox = document.getElementById('errorBox');
+    const submitBtn = document.getElementById('submitBtn');
+
+    function showError(msg) {
+        errorBox.textContent = msg;
+        errorBox.style.display = 'block';
+        loader.style.display = 'none';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Edit Image ✏️';
+    }
+
+    async function pollStatus(jobId, imageUrl) {
+        let attempts = 0;
+        const poll = async () => {
+            attempts++;
+            if (attempts > 60) {
+                showError('Timeout — dobara koshish karein.');
+                return;
+            }
+            try {
+                const resp = await fetch('/status/' + jobId);
+                const data = await resp.json();
+                if (data.error) { showError(data.error); return; }
+                if (data.done && data.image) {
+                    const src = 'data:image/webp;base64,' + data.image;
+                    document.getElementById('originalImg').src = imageUrl;
+                    document.getElementById('editedImg').src = src;
+                    document.getElementById('downloadBtn').href = src;
+                    loader.style.display = 'none';
+                    results.style.display = 'flex';
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Edit Image ✏️';
+                    return;
+                }
+                statusText.textContent = 'AI edit kar raha hai... (' + attempts * 5 + 's) ⏳';
+                setTimeout(poll, 5000);
+            } catch(e) {
+                showError('Network error: ' + e.message);
+            }
+        };
+        poll();
+    }
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        errorBox.style.display = 'none';
+        results.style.display = 'none';
+        loader.style.display = 'block';
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Processing...';
+        statusText.textContent = 'Job submit ho raha hai...';
+
+        const imageUrl = document.getElementById('image_url').value.trim();
+        const formData = new FormData(form);
+
+        try {
+            const resp = await fetch('/submit', { method: 'POST', body: formData });
+            const data = await resp.json();
+            if (data.error) { showError(data.error); return; }
+            statusText.textContent = 'AI edit kar raha hai... ⏳';
+            pollStatus(data.job_id, imageUrl);
+        } catch(e) {
+            showError('Submit fail: ' + e.message);
+        }
     });
 </script>
-
 </body>
 </html>
