@@ -6,13 +6,15 @@ import os
 
 app = Flask(__name__)
 
-# Yahan apne Hugging Face Tokens paste karein (Maine 2 likhe hain jaisa aap ne kaha)
+# Tokens environment variables se read honge
 HF_TOKENS = [
-    "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",
-    "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"
+    t.strip() for t in [
+        os.environ.get("HF_TOKEN_1", ""),
+        os.environ.get("HF_TOKEN_2", "")
+    ] if t.strip()
 ]
 
-# Hugging Face Model URL (Instruct-pix2pix image editing ke liye best hai)
+# Hugging Face Model URL (naya router endpoint)
 API_URL = "https://router.huggingface.co/hf-inference/models/timbrooks/instruct-pix2pix"
 
 current_token_index = 0
