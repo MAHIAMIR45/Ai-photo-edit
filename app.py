@@ -13,7 +13,7 @@ jobs = {}
 
 def run_edit(job_id, image_url, prompt):
     try:
-        client = Client("timbrooks/instruct-pix2pix", hf_token=HF_TOKEN, verbose=False)
+        client = Client("timbrooks/instruct-pix2pix", token=HF_TOKEN, verbose=False)
         result = client.predict(
             handle_file(image_url),
             prompt,
