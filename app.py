@@ -15,7 +15,7 @@ HF_TOKENS = [
 ]
 
 # Hugging Face Model URL (naya router endpoint)
-API_URL = "https://router.huggingface.co/hf-inference/models/timbrooks/instruct-pix2pix"
+API_URL = "https://api-inference.huggingface.co/models/timbrooks/instruct-pix2pix"
 
 current_token_index = 0
 
