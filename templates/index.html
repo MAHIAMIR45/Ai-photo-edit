@@ -14,24 +14,26 @@
             min-height: 100vh;
             margin: 0;
             padding: 20px;
+            box-sizing: border-box;
         }
         .container {
             background: white;
             padding: 30px;
             border-radius: 10px;
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            max-width: 800px;
+            max-width: 850px;
             width: 100%;
         }
-        h1 { text-align: center; color: #333; }
+        h1 { text-align: center; color: #333; margin-bottom: 25px; }
         .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input[type="text"], textarea {
+        label { display: block; margin-bottom: 5px; font-weight: bold; color: #444; }
+        input[type="text"] {
             width: 100%;
             padding: 10px;
             border: 1px solid #ccc;
             border-radius: 5px;
             box-sizing: border-box;
+            font-size: 14px;
         }
         button {
             width: 100%;
@@ -42,14 +44,25 @@
             border-radius: 5px;
             font-size: 16px;
             cursor: pointer;
+            margin-top: 5px;
         }
         button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #aaa; cursor: not-allowed; }
         .error {
             color: red;
             background: #ffe6e6;
             padding: 10px;
             border-radius: 5px;
             margin-bottom: 15px;
+        }
+        .info {
+            background: #e8f4fd;
+            border-left: 4px solid #007bff;
+            padding: 10px 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-size: 13px;
+            color: #444;
         }
         .results {
             display: flex;
@@ -63,49 +76,86 @@
             border: 1px solid #ddd;
             padding: 10px;
             border-radius: 8px;
-            max-width: 350px;
+            flex: 1;
+            min-width: 250px;
         }
-        .image-box img {
-            max-width: 100%;
-            border-radius: 5px;
+        .image-box h3 { color: #555; margin-bottom: 10px; }
+        .image-box img { max-width: 100%; border-radius: 5px; }
+        .loader {
+            display: none;
+            text-align: center;
+            margin-top: 15px;
+            color: #007bff;
+            font-size: 15px;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #007bff;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            animation: spin 1s linear infinite;
+            margin: 10px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>AI Image Editor</h1>
+    <h1>🎨 AI Image Editor</h1>
+
+    <div class="info">
+        ✅ <strong>Yeh app aapki image ko edit karta hai</strong> — image URL aur editing instruction do, AI modified image banayega. Processing mein 30-60 second lag sakte hain.
+    </div>
 
     {% if error %}
         <div class="error">{{ error }}</div>
     {% endif %}
 
-    <form method="POST">
+    <form method="POST" id="mainForm">
         <div class="form-group">
             <label for="image_url">Image URL (Imgur / ImgBB Direct Link):</label>
-            <input type="text" id="image_url" name="image_url" value="{{ image_url or '' }}" placeholder="https://i.imgur.com/your_image.jpg" required>
+            <input type="text" id="image_url" name="image_url" value="{{ image_url or '' }}"
+                   placeholder="https://i.imgur.com/your_image.jpg" required>
         </div>
         <div class="form-group">
             <label for="prompt">Edit Instruction (Prompt):</label>
-            <input type="text" id="prompt" name="prompt" value="{{ prompt or '' }}" placeholder="e.g. Make it look like a cartoon, turn day to night, add a hat" required>
+            <input type="text" id="prompt" name="prompt" value="{{ prompt or '' }}"
+                   placeholder="e.g. Make it look like a cartoon, turn day to night, add a hat" required>
         </div>
-        <button type="submit">Edit Image</button>
+        <button type="submit" id="submitBtn">Edit Image ✏️</button>
     </form>
+
+    <div class="loader" id="loader">
+        <div class="spinner"></div>
+        <p>AI image edit kar raha hai... 30-60 second lag sakte hain ⏳</p>
+    </div>
 
     {% if edited_img_b64 %}
     <div class="results">
         <div class="image-box">
-            <h3>Original Image</h3>
+            <h3>📷 Original Image</h3>
             <img src="{{ original_img_url }}" alt="Original Image">
         </div>
         <div class="image-box">
-            <h3>Edited Image (AI)</h3>
-            <img src="data:image/jpeg;base64,{{ edited_img_b64 }}" alt="Edited Image">
+            <h3>✨ Edited Image (AI)</h3>
+            <img src="data:image/webp;base64,{{ edited_img_b64 }}" alt="Edited Image">
         </div>
     </div>
     {% endif %}
-
 </div>
+
+<script>
+    document.getElementById('mainForm').addEventListener('submit', function() {
+        document.getElementById('submitBtn').disabled = true;
+        document.getElementById('submitBtn').textContent = 'Processing...';
+        document.getElementById('loader').style.display = 'block';
+    });
+</script>
 
 </body>
 </html>
