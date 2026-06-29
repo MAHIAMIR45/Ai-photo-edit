@@ -6,98 +6,107 @@ import os
 
 app = Flask(__name__)
 
-# Tokens environment variables se read honge
-HF_TOKENS = [
-    t.strip() for t in [
-        os.environ.get("HF_TOKEN_1", ""),
-        os.environ.get("HF_TOKEN_2", "")
-    ] if t.strip()
-]
-
-# Hugging Face Model URL (naya router endpoint)
-API_URL = "https://api-inference.huggingface.co/models/timbrooks/instruct-pix2pix"
-
-current_token_index = 0
-
-def get_next_token():
-    global current_token_index
-    token = HF_TOKENS[current_token_index]
-    current_token_index = (current_token_index + 1) % len(HF_TOKENS)
-    return token
+HORDE_API_URL = "https://stablehorde.net/api/v2"
+HORDE_API_KEY = "0000000000"
 
 def query_api(image_url, prompt):
-    # Image ko URL se download karein
     try:
-        img_response = requests.get(image_url, stream=True)
+        img_response = requests.get(image_url, timeout=15)
         img_response.raise_for_status()
-        img_bytes = img_response.content
+        img_base64 = base64.b64encode(img_response.content).decode("utf-8")
     except Exception as e:
         return None, f"Image download nahi hui: {str(e)}"
 
-    # Image ko Base64 mein convert karein taake API ko bhej sakein
-    img_base64 = base64.b64encode(img_bytes).decode("utf-8")
-
-    # API Payload
     payload = {
-        "inputs": {
-            "image": img_base64,
-            "text": prompt
-        }
+        "prompt": prompt,
+        "params": {
+            "sampler_name": "k_euler",
+            "cfg_scale": 7.5,
+            "denoising_strength": 0.7,
+            "height": 512,
+            "width": 512,
+            "steps": 25,
+            "n": 1
+        },
+        "source_image": img_base64,
+        "source_processing": "img2img",
+        "r2": True,
+        "shared": False
     }
 
-    headers = {}
+    headers = {
+        "apikey": HORDE_API_KEY,
+        "Content-Type": "application/json"
+    }
 
-    # API ko call lagayein (Retry logic ke sath)
-    max_retries = 6
-    for attempt in range(max_retries):
-        token = get_next_token()
-        headers = {"Authorization": f"Bearer {token}"}
+    try:
+        submit_resp = requests.post(
+            f"{HORDE_API_URL}/generate/async",
+            json=payload,
+            headers=headers,
+            timeout=30
+        )
+        if submit_resp.status_code != 202:
+            return None, f"Job submit nahi hua: {submit_resp.status_code} - {submit_resp.text}"
 
+        job_id = submit_resp.json().get("id")
+        if not job_id:
+            return None, "Job ID nahi mila."
+
+    except Exception as e:
+        return None, f"Submit request fail: {str(e)}"
+
+    for attempt in range(30):
+        time.sleep(6)
         try:
-            response = requests.post(API_URL, headers=headers, json=payload, timeout=30)
+            status_resp = requests.get(
+                f"{HORDE_API_URL}/generate/status/{job_id}",
+                headers=headers,
+                timeout=15
+            )
+            data = status_resp.json()
 
-            # Agar model load ho raha hai toh 503 aata hai, thori der ruk kar retry karein
-            if response.status_code == 503:
-                print(f"Model load ho raha hai... 5 second wait karein. (Attempt {attempt+1})")
-                time.sleep(5)
-                continue
+            if data.get("done"):
+                generations = data.get("generations", [])
+                if not generations:
+                    return None, "Koi result nahi aaya."
 
-            # Agar rate limit (429) ho toh dusra token try karein
-            if response.status_code == 429:
-                print(f"Token {token} rate limit par hai, dusra try kar rahe hain...")
-                continue
+                img_url = generations[0].get("img")
+                if not img_url:
+                    return None, "Image URL nahi mila result mein."
 
-            # Agar successful ho gaya
-            if response.status_code == 200:
-                # HF API direct image bytes return karti hai
-                edited_img_bytes = response.content
-                edited_img_b64 = base64.b64encode(edited_img_bytes).decode("utf-8")
-                return edited_img_b64, None
-            else:
-                return None, f"API Error: {response.status_code} - {response.text}"
+                img_resp = requests.get(img_url, timeout=15)
+                img_resp.raise_for_status()
+                img_b64 = base64.b64encode(img_resp.content).decode("utf-8")
+                return img_b64, None
+
+            wait_time = data.get("wait_secs", "?")
+            print(f"Attempt {attempt+1}: abhi bhi process ho raha hai... ({wait_time}s bachi)")
 
         except Exception as e:
-            return None, f"Request fail hui: {str(e)}"
+            print(f"Status check error: {str(e)}")
+            continue
 
-    return None, "Server busy hai ya tokens khatam ho gaye hain. Thori baad koshish karein."
+    return None, "Timeout ho gaya — server busy hai. Dobara koshish karein."
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
-        image_url = request.form.get('image_url')
-        prompt = request.form.get('prompt')
+        image_url = request.form.get('image_url', '').strip()
+        prompt = request.form.get('prompt', '').strip()
 
         if not image_url or not prompt:
             return render_template('index.html', error="Image URL aur Prompt dono zaroori hain.")
 
-        # API ko call karein
         edited_img_b64, error = query_api(image_url, prompt)
 
         if error:
             return render_template('index.html', error=error, image_url=image_url, prompt=prompt)
 
-        # Original aur Edited image dono webpage par bhejein
-        return render_template('index.html', original_img_url=image_url, edited_img_b64=edited_img_b64, prompt=prompt)
+        return render_template('index.html',
+                               original_img_url=image_url,
+                               edited_img_b64=edited_img_b64,
+                               prompt=prompt)
 
     return render_template('index.html')
 
